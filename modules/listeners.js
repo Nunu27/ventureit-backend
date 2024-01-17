@@ -1,5 +1,5 @@
 const { default: algolia } = require('algoliasearch');
-const { getFirestore } = require('firebase-admin/firestore');
+const { getFirestore, AggregateField } = require('firebase-admin/firestore');
 const { getMessaging } = require('firebase-admin/messaging');
 
 const formatData = ({
@@ -86,6 +86,39 @@ module.exports = {
 			}
 
 			await server.temp.set('last-submission', Date.now());
+		} catch (error) {
+			server.log.error(error);
+		}
+	},
+	onReviewsData: async (snapshot) => {
+		try {
+			const reviewsCollection = getFirestore().collection('reviews');
+			const businessCollection = getFirestore().collection('businesses');
+			const changes = snapshot.docChanges();
+
+			server.log.info(`Received ${changes.length} reviews data`);
+			const updatedBusinesses = [];
+
+			for (const change of changes) {
+				const { businessId } = change.doc.data();
+				if (updatedBusinesses.includes(businessId)) continue;
+
+				const snapshot = await reviewsCollection
+					.where('businessId', '==', businessId)
+					.aggregate({
+						rating: AggregateField.average('rating'),
+						ratedBy: AggregateField.count()
+					})
+					.get();
+				const { rating, ratedBy } = snapshot.data();
+
+				await businessCollection.doc(businessId).update({
+					rating,
+					ratedBy
+				});
+			}
+
+			await server.temp.set('last-reviews', Date.now());
 		} catch (error) {
 			server.log.error(error);
 		}
