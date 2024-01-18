@@ -37,6 +37,9 @@ const updateType = ['added', 'modified'];
 module.exports = {
 	onBusinessData: async (snapshot) => {
 		try {
+			const firestore = getFirestore();
+			const businesses = firestore.collection('businesses');
+			const batch = firestore.batch();
 			const changes = snapshot.docChanges();
 			server.log.info(`Received ${changes.length} businesses data`);
 
@@ -44,9 +47,22 @@ module.exports = {
 			const toDelete = [];
 
 			for (const change of changes) {
-				if (updateType.includes(change.type))
-					toUpdate.push(formatData(change.doc.data()));
-				else toDelete.push(change.doc.id);
+				if (updateType.includes(change.type)) {
+					const business = change.doc.data();
+					business.products.sort((a, b) => a.price - b.price);
+					business.priceRange = business.products.length
+						? {
+								lowerBound: business.products.at(0).price,
+								upperBound: business.products.at(-1).price
+							}
+						: null;
+
+					batch.update(businesses.doc(change.doc.id), {
+						priceRange: business.priceRange,
+						products: business.products
+					});
+					toUpdate.push(formatData(business));
+				} else toDelete.push(change.doc.id);
 			}
 
 			if (toUpdate.length) await businessIndex.saveObjects(toUpdate);
@@ -92,8 +108,10 @@ module.exports = {
 	},
 	onReviewsData: async (snapshot) => {
 		try {
-			const reviewsCollection = getFirestore().collection('reviews');
-			const businessCollection = getFirestore().collection('businesses');
+			const firestore = getFirestore();
+			const reviewsCollection = firestore.collection('reviews');
+			const businessCollection = firestore.collection('businesses');
+			const batch = firestore.batch();
 			const changes = snapshot.docChanges();
 
 			server.log.info(`Received ${changes.length} reviews data`);
@@ -112,13 +130,50 @@ module.exports = {
 					.get();
 				const { rating, ratedBy } = snapshot.data();
 
-				await businessCollection.doc(businessId).update({
+				batch.update(businessCollection.doc(businessId), {
 					rating,
 					ratedBy
 				});
 			}
 
+			await batch.commit();
 			await server.temp.set('last-reviews', Date.now());
+		} catch (error) {
+			server.log.error(error);
+		}
+	},
+	onMissionData: async (snapshot) => {
+		try {
+			const firestore = getFirestore();
+			const missionsCollection = firestore.collection('missions');
+			const changes = snapshot.docChanges();
+
+			server.log.info(`Received ${changes.length} reviews data`);
+			const updatedBusinesses = [];
+			const toUpdate = [];
+
+			for (const change of changes) {
+				const { businessId, finishedCount, maxQuota } = change.doc.data();
+				if (
+					updatedBusinesses.includes(businessId) ||
+					(change.type === 'modified' && finishedCount <= maxQuota)
+				)
+					continue;
+
+				const snapshot = await missionsCollection
+					.where('businessId', '==', businessId)
+					.count()
+					.get();
+				const { count } = snapshot.data();
+
+				toUpdate.push({
+					objectID: businessId,
+					haveMission: count > 0
+				});
+			}
+
+			if (toUpdate.length) await businessIndex.partialUpdateObjects(toUpdate);
+			await server.temp.set('last-missions', Date.now());
 		} catch (error) {
 			server.log.error(error);
 		}

@@ -8,7 +8,8 @@ global.server = require('fastify')({
 const {
 	onBusinessData,
 	onSubmissionData,
-	onReviewsData
+	onReviewsData,
+	onMissionData
 } = require('./modules/listeners');
 const { initializeApp, cert, deleteApp } = require('firebase-admin/app');
 const { HTTPError, HTTP_STATUS } = require('./modules/utils');
@@ -79,6 +80,10 @@ server.temp.rehydrate().then(async () => {
 		.collection('reviews')
 		.where('updatedAt', '>', server.temp.get('last-reviews') || Date.now())
 		.onSnapshot(onReviewsData, server.log.error);
+	const unsubMissionListener = db
+		.collection('missions')
+		.where('updatedAt', '>', server.temp.get('last-missions') || 0)
+		.onSnapshot(onMissionData, server.log.error);
 
 	process.on('beforeExit', async () => {
 		server.log('Shutting down');
@@ -86,6 +91,7 @@ server.temp.rehydrate().then(async () => {
 		unsubBusinessListener();
 		unsubSubmissionListener();
 		unsubReviewsListener();
+		unsubMissionListener();
 
 		await db.terminate();
 		await deleteApp(firebase);
