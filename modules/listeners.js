@@ -148,7 +148,7 @@ module.exports = {
 			const missionsCollection = firestore.collection('missions');
 			const changes = snapshot.docChanges();
 
-			server.log.info(`Received ${changes.length} reviews data`);
+			server.log.info(`Received ${changes.length} missions data`);
 			const updatedBusinesses = [];
 			const toUpdate = [];
 

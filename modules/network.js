@@ -6,8 +6,8 @@ axios.defaults.headers = {
 		'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
 };
 
-const contentParser = {
-	'www.tiktok.com': async (url) => {
+const parser = {
+	tiktok: async (url) => {
 		const splitted = url.split('/');
 		if (splitted.length !== 6 || splitted[4] !== 'video') {
 			throw new HTTPError(HTTP_STATUS.BAD_REQUEST, 'Not a post');
@@ -29,7 +29,7 @@ const contentParser = {
 			createdAt: new Date(+postData.createTime * 1000).toLocaleDateString('en')
 		};
 	},
-	'www.instagram.com': async (url) => {
+	instagram: async (url) => {
 		const splitted = url.split('/');
 		if (splitted.length !== 6 || splitted[3] !== 'reel') {
 			throw new HTTPError(HTTP_STATUS.BAD_REQUEST, 'Not a reel');
@@ -52,6 +52,12 @@ const contentParser = {
 			).toLocaleDateString('en')
 		};
 	}
+};
+
+const contentParser = {
+	'vt.tiktok.com': parser.tiktok,
+	'www.tiktok.com': parser.tiktok,
+	'www.instagram.com': parser.instagram
 };
 
 module.exports = {
